@@ -153,6 +153,30 @@ app.get("/meals", verifyToken, async (req, res) => {
   }
 });
 
+app.delete("/meals/:id", verifyToken, async (req, res) => {
+  try {
+    const mealId = parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(mealId)) {
+      return res.status(400).json({ message: "Invalid meal id" });
+    }
+
+    const result = await pool.query(
+      "DELETE FROM meals WHERE id = $1 AND user_id = $2 RETURNING *",
+      [mealId, req.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Meal not found" });
+    }
+
+    res.json({ message: "Meal deleted successfully" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/meals-customers", async (req, res) => {
   try {
     const { name, user_id } = req.query;
