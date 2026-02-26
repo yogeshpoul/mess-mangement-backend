@@ -214,7 +214,6 @@ app.get("/user-status", verifyToken, async (req, res) => {
     );
 
     return res.json({
-      message: status_flag === 1 ? "User opened" : "User closed",
       status_flag
     });
 
