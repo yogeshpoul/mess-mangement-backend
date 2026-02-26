@@ -203,7 +203,7 @@ app.get("/user-status", verifyToken, async (req, res) => {
     }
 
     // 🔹 If provided → validate
-    if (![0, 1].includes(status_flag)) {
+    if ([0, 1].includes(status_flag)) {
       return res.status(400).json({ message: "Invalid status flag (use 0 or 1)" });
     }
 
