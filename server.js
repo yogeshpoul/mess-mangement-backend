@@ -156,7 +156,8 @@ app.get("/meals", verifyToken, async (req, res) => {
 app.get("/meals-customers", async (req, res) => {
   try {
     const { name, user_id } = req.query;
-    if (!name && !user_id) {
+    const userId = user_id || req.user.id;
+    if (!name && !userId) {
       return res.json({ message: "Please provide user_id or name" });
     }
 
@@ -175,6 +176,48 @@ app.get("/meals-customers", async (req, res) => {
     );
 
     res.json(meals.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/user-status", verifyToken, async (req, res) => {
+  try {
+    const { status_flag } = req.query;
+
+    if (!status_flag) {
+      const user = await pool.query(
+        "SELECT status_flag FROM users WHERE id=$1",
+        [req.user.id]
+      );
+
+      if (user.rows.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      return res.json({
+        userId: req.user.id,
+        status_flag: user.rows[0].status_flag
+      });
+    }
+
+    // 🔹 If provided → validate
+    if (![0, 1].includes(status_flag)) {
+      return res.status(400).json({ message: "Invalid status flag (use 0 or 1)" });
+    }
+
+    // 🔹 Update status
+    await pool.query(
+      "UPDATE users SET status_flag=$1 WHERE id=$2",
+      [status_flag, req.user.id]
+    );
+
+    return res.json({
+      message: status_flag === 1 ? "User opened" : "User closed",
+      status_flag
+    });
 
   } catch (err) {
     console.error(err);
