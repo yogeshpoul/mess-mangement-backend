@@ -156,8 +156,7 @@ app.get("/meals", verifyToken, async (req, res) => {
 app.get("/meals-customers", async (req, res) => {
   try {
     const { name, user_id } = req.query;
-    const userId = user_id || req.user.id;
-    if (!name && !userId) {
+    if (!name && !user_id) {
       return res.json({ message: "Please provide user_id or name" });
     }
 
