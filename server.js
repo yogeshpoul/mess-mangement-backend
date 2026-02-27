@@ -295,6 +295,15 @@ app.get("/meals-customers", async (req, res) => {
       return res.json({ message: "Please provide user_id or name" });
     }
 
+    // 🔹 Capture visitor IP
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    // 🔹 Insert visit record WITH user_id
+    await pool.query(
+      `INSERT INTO api_visits (endpoint, ip_address, user_id)
+       VALUES ($1, $2, $3)`,
+      ["/meals-customers", ip, user_id || null]
+    );
+
     // const meals = await pool.query(
     //   `SELECT m.id, m.meal_flag, m.meal_name, u.name
     //    FROM meals m
@@ -350,6 +359,34 @@ app.get("/user-status", verifyToken, async (req, res) => {
 
     return res.json({
       status_flag
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+//===========================dashboard=========================
+app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query(
+      `SELECT 
+          COUNT(*) AS total_visits,
+          COUNT(DISTINCT ip_address) AS unique_visitors
+       FROM api_visits
+       WHERE endpoint = '/meals-customers'
+       AND user_id = $1`,
+      [userId]
+    );
+
+    res.json({
+      user_id: userId,
+      total_visits: parseInt(result.rows[0].total_visits, 10),
+      unique_visitors: parseInt(result.rows[0].unique_visitors, 10)
     });
 
   } catch (err) {
