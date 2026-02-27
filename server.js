@@ -69,8 +69,7 @@ app.post("/login", async (req, res) => {
     // Generate JWT
     const token = jwt.sign(
       { id: user.rows[0].id, mobile: user.rows[0].mobile },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      process.env.JWT_SECRET
     );
 
     res.json({
@@ -114,7 +113,32 @@ app.get("/hello", async (req, res) => {
 /* ================= ADD MEAL ================= */
 app.post("/add-meal", verifyToken, async (req, res) => {
   try {
-    const { meal_flag, meal_name } = req.body;
+    const { meal_id, meal_flag, meal_name } = req.body;
+
+    // 🔹 If meal_id provided → restore deleted meal
+    if (meal_id) {
+      const parsedId = parseInt(meal_id, 10);
+
+      if (!Number.isInteger(parsedId)) {
+        return res.status(400).json({ message: "Invalid meal_id" });
+      }
+
+      const result = await pool.query(
+        `UPDATE meals 
+         SET is_deleted = 0 
+         WHERE id = $1 AND user_id = $2
+         RETURNING *`,
+        [parsedId, req.user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Meal not found" });
+      }
+
+      return res.json({ message: "Meal restored successfully" });
+    }
+
+    // 🔹 Otherwise → Normal Add Meal Logic
 
     if (meal_flag === undefined || !meal_name) {
       return res.status(400).json({ message: "Meal flag and name required" });
@@ -126,7 +150,8 @@ app.post("/add-meal", verifyToken, async (req, res) => {
     }
 
     await pool.query(
-      "INSERT INTO meals (user_id, meal_flag, meal_name) VALUES ($1,$2,$3)",
+      `INSERT INTO meals (user_id, meal_flag, meal_name, is_deleted) 
+       VALUES ($1,$2,$3,0)`,
       [req.user.id, meal_flag, meal_name]
     );
 
@@ -137,6 +162,32 @@ app.post("/add-meal", verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// app.post("/add-meal", verifyToken, async (req, res) => {
+//   try {
+//     const { meal_flag, meal_name } = req.body;
+
+//     if (meal_flag === undefined || !meal_name) {
+//       return res.status(400).json({ message: "Meal flag and name required" });
+//     }
+
+//     // Validate flag
+//     if (![0, 1, 2].includes(meal_flag)) {
+//       return res.status(400).json({ message: "Invalid meal flag" });
+//     }
+
+//     await pool.query(
+//       "INSERT INTO meals (user_id, meal_flag, meal_name) VALUES ($1,$2,$3)",
+//       [req.user.id, meal_flag, meal_name]
+//     );
+
+//     res.status(201).json({ message: "Meal added successfully" });
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 /* ================= GET USER MEALS ================= */
 app.get("/meals", verifyToken, async (req, res) => {
@@ -153,16 +204,53 @@ app.get("/meals", verifyToken, async (req, res) => {
   }
 });
 
+app.get("/current-meals", verifyToken, async (req, res) => {
+  try {
+    const meals = await pool.query(
+      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
+      [req.user.id]
+    );
+
+    res.json(meals.rows);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete("/meals/:id", verifyToken, async (req, res) => {
   try {
     const mealId = parseInt(req.params.id, 10);
+    const softDelete = parseInt(req.query.soft_delete, 10);
 
     if (!Number.isInteger(mealId)) {
       return res.status(400).json({ message: "Invalid meal id" });
     }
 
-    const result = await pool.query(
-      "DELETE FROM meals WHERE id = $1 AND user_id = $2 RETURNING *",
+    let result;
+
+    // 🔹 If soft_delete=1 → Soft Delete
+    if (softDelete === 1) {
+      result = await pool.query(
+        `UPDATE meals 
+         SET is_deleted = 1 
+         WHERE id = $1 AND user_id = $2 AND is_deleted = 0
+         RETURNING *`,
+        [mealId, req.user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "Meal not found or already deleted" });
+      }
+
+      return res.json({ message: "Meal soft deleted successfully" });
+    }
+
+    // 🔹 Otherwise → Permanent Delete
+    result = await pool.query(
+      `DELETE FROM meals 
+       WHERE id = $1 AND user_id = $2 
+       RETURNING *`,
       [mealId, req.user.id]
     );
 
@@ -170,12 +258,35 @@ app.delete("/meals/:id", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Meal not found" });
     }
 
-    res.json({ message: "Meal deleted successfully" });
+    res.json({ message: "Meal permanently deleted" });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+// app.delete("/meals/:id", verifyToken, async (req, res) => {
+//   try {
+//     const mealId = parseInt(req.params.id, 10);
+
+//     if (!Number.isInteger(mealId)) {
+//       return res.status(400).json({ message: "Invalid meal id" });
+//     }
+
+//     const result = await pool.query(
+//       "DELETE FROM meals WHERE id = $1 AND user_id = $2 RETURNING *",
+//       [mealId, req.user.id]
+//     );
+
+//     if (result.rowCount === 0) {
+//       return res.status(404).json({ message: "Meal not found" });
+//     }
+
+//     res.json({ message: "Meal deleted successfully" });
+
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 app.get("/meals-customers", async (req, res) => {
   try {
@@ -194,7 +305,7 @@ app.get("/meals-customers", async (req, res) => {
     //   [user_id || null, name || null]
     // );
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
       [user_id]
     );
 
