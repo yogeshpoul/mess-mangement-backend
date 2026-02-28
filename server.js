@@ -422,20 +422,37 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 🔹 1. Overall Stats
+    // 🔹 1. Overall + Current Month Stats
     const overall = await pool.query(
       `SELECT 
           COUNT(*) AS total_visits,
           COUNT(DISTINCT ip_address) AS unique_visitors,
-          COUNT(*) FILTER (WHERE DATE(visited_at)=CURRENT_DATE) AS today_visits,
-          COUNT(DISTINCT ip_address) FILTER (WHERE DATE(visited_at)=CURRENT_DATE) AS today_unique_visitors
+
+          COUNT(*) FILTER (
+              WHERE DATE(visited_at)=CURRENT_DATE
+          ) AS today_visits,
+
+          COUNT(DISTINCT ip_address) FILTER (
+              WHERE DATE(visited_at)=CURRENT_DATE
+          ) AS today_unique_visitors,
+
+          COUNT(*) FILTER (
+              WHERE EXTRACT(MONTH FROM visited_at)=EXTRACT(MONTH FROM CURRENT_DATE)
+              AND EXTRACT(YEAR FROM visited_at)=EXTRACT(YEAR FROM CURRENT_DATE)
+          ) AS current_month_visits,
+
+          COUNT(DISTINCT ip_address) FILTER (
+              WHERE EXTRACT(MONTH FROM visited_at)=EXTRACT(MONTH FROM CURRENT_DATE)
+              AND EXTRACT(YEAR FROM visited_at)=EXTRACT(YEAR FROM CURRENT_DATE)
+          ) AS current_month_unique_visitors
+
        FROM api_visits
        WHERE endpoint = '/meals-customers'
        AND user_id = $1`,
       [userId]
     );
 
-    // 🔹 2. Monthly Stats (Jan–Dec of current year)
+    // 🔹 2. Monthly Stats (ONLY till current month)
     const monthly = await pool.query(
       `SELECT 
           EXTRACT(MONTH FROM visited_at) AS month,
@@ -450,8 +467,10 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
       [userId]
     );
 
-    // 🔹 Format months 1-12 (even if no data)
-    const months = Array.from({ length: 12 }, (_, i) => ({
+    const currentMonth = new Date().getMonth() + 1;
+
+    // 🔹 Create months only till current month
+    const months = Array.from({ length: currentMonth }, (_, i) => ({
       month: i + 1,
       monthly_visits: 0,
       monthly_unique_visitors: 0
@@ -459,19 +478,27 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
 
     monthly.rows.forEach(row => {
       const index = row.month - 1;
-      months[index] = {
-        month: parseInt(row.month, 10),
-        monthly_visits: parseInt(row.monthly_visits, 10),
-        monthly_unique_visitors: parseInt(row.monthly_unique_visitors, 10)
-      };
+      if (index < currentMonth) {
+        months[index] = {
+          month: parseInt(row.month, 10),
+          monthly_visits: parseInt(row.monthly_visits, 10),
+          monthly_unique_visitors: parseInt(row.monthly_unique_visitors, 10)
+        };
+      }
     });
 
     res.json({
       user_id: userId,
+
       total_visits: parseInt(overall.rows[0].total_visits, 10),
       unique_visitors: parseInt(overall.rows[0].unique_visitors, 10),
+
       today_visits: parseInt(overall.rows[0].today_visits, 10),
       today_unique_visitors: parseInt(overall.rows[0].today_unique_visitors, 10),
+
+      current_month_visits: parseInt(overall.rows[0].current_month_visits, 10),
+      current_month_unique_visitors: parseInt(overall.rows[0].current_month_unique_visitors, 10),
+
       monthly_stats: months
     });
 
@@ -480,7 +507,6 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 app.listen(process.env.PORT, () =>
   console.log(`Server running on port ${process.env.PORT}`)
