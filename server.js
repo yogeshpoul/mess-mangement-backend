@@ -113,7 +113,7 @@ app.get("/hello", async (req, res) => {
 /* ================= ADD MEAL ================= */
 app.post("/add-meal", verifyToken, async (req, res) => {
   try {
-    const { meal_id, meal_flag, meal_name } = req.body;
+    const { meal_id, meal_flag, meal_name, meal_price } = req.body;
 
     // 🔹 If meal_id provided → restore deleted meal
     if (meal_id) {
@@ -149,10 +149,21 @@ app.post("/add-meal", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "Invalid meal flag" });
     }
 
+        // 🔹 Validate meal_price (optional)
+    let parsedPrice = null;
+
+    if (meal_price !== undefined) {
+      parsedPrice = Number(meal_price);
+
+      if (isNaN(parsedPrice) || parsedPrice < 0) {
+        return res.status(400).json({ message: "Invalid meal_price" });
+      }
+    }
+
     await pool.query(
-      `INSERT INTO meals (user_id, meal_flag, meal_name, is_deleted) 
-       VALUES ($1,$2,$3,0)`,
-      [req.user.id, meal_flag, meal_name]
+      `INSERT INTO meals (user_id, meal_flag, meal_name, meal_price, is_deleted) 
+       VALUES ($1,$2,$3,$4,0)`,
+      [req.user.id, meal_flag, meal_name, parsedPrice]
     );
 
     res.status(201).json({ message: "Meal added successfully" });
@@ -207,7 +218,7 @@ app.get("/meals", verifyToken, async (req, res) => {
 app.get("/current-meals", verifyToken, async (req, res) => {
   try {
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
       [req.user.id]
     );
 
@@ -314,11 +325,19 @@ app.get("/meals-customers", async (req, res) => {
     //   [user_id || null, name || null]
     // );
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
       [user_id]
     );
 
-    res.json(meals.rows);
+     // 🔹 Get user name
+    const userResult = await pool.query(
+      `SELECT name FROM users WHERE id = $1`,
+      [user_id]
+    );
+
+    const user_name = userResult.rows[0].name;
+
+    res.json({ user_name, meals: meals.rows });
 
   } catch (err) {
     console.error(err);
@@ -332,7 +351,7 @@ app.get("/user-status", verifyToken, async (req, res) => {
 
     if (!status_flag) {
       const user = await pool.query(
-        "SELECT status_flag FROM users WHERE id=$1",
+        "SELECT name as user_name, status_flag FROM users WHERE id=$1",
         [req.user.id]
       );
 
@@ -342,7 +361,8 @@ app.get("/user-status", verifyToken, async (req, res) => {
 
       return res.json({
         userId: req.user.id,
-        status_flag: user.rows[0].status_flag
+        status_flag: user.rows[0].status_flag,
+        user_name: user.rows[0].user_name,
       });
     }
 
