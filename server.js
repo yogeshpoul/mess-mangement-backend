@@ -372,21 +372,24 @@ app.get("/user-status", verifyToken, async (req, res) => {
 app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-
     const result = await pool.query(
       `SELECT 
           COUNT(*) AS total_visits,
-          COUNT(DISTINCT ip_address) AS unique_visitors
-       FROM api_visits
-       WHERE endpoint = '/meals-customers'
-       AND user_id = $1`,
+          COUNT(DISTINCT ip_address) AS unique_visitors,
+          COUNT(*) FILTER (WHERE DATE(visited_at)=CURRENT_DATE) AS today_visits,
+          COUNT(DISTINCT ip_address) FILTER (WHERE DATE(visited_at)=CURRENT_DATE) AS today_unique_visitors
+      FROM api_visits
+      WHERE endpoint = '/meals-customers'
+      AND user_id = $1`,
       [userId]
     );
 
     res.json({
       user_id: userId,
       total_visits: parseInt(result.rows[0].total_visits, 10),
-      unique_visitors: parseInt(result.rows[0].unique_visitors, 10)
+      unique_visitors: parseInt(result.rows[0].unique_visitors, 10),
+      today_visits: parseInt(result.rows[0].today_visits, 10),
+      today_unique_visitors: parseInt(result.rows[0].today_unique_visitors, 10),
     });
 
   } catch (err) {
