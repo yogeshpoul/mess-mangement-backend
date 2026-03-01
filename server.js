@@ -250,7 +250,7 @@ app.post("/add-meal", verifyToken, async (req, res) => {
 app.get("/meals", verifyToken, async (req, res) => {
   try {
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 ORDER BY id desc",
       [req.user.id]
     );
 
@@ -371,7 +371,7 @@ app.get("/meals-customers", async (req, res) => {
     //   [user_id || null, name || null]
     // );
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY id desc",
       [user_id]
     );
 
