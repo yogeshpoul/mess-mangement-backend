@@ -4,6 +4,8 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const pool = require("./db");
 const cors = require("cors");
+const multer = require("multer");
+const { put, list } = require("@vercel/blob");
 
 const app = express();
 app.use(express.json());
@@ -381,7 +383,16 @@ app.get("/meals-customers", async (req, res) => {
 
     const user_name = userResult.rows[0].name;
 
-    res.json({ user_name, meals: meals.rows });
+    const prefix = `users/${user_id}/`;
+
+    const { blobs } = await list({
+      prefix,
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
+
+    const imageUrls = blobs.map(blob => blob.url);
+
+    res.json({ user_name, meals: meals.rows, image_urls: imageUrls });
 
   } catch (err) {
     console.error(err);
@@ -544,6 +555,81 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
       current_month_unique_visitors: parseInt(overall.rows[0].current_month_unique_visitors, 10),
 
       monthly_stats: months
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
+
+app.post("/upload-meals-images", verifyToken, upload.array("images", 10), async (req, res) => {
+    try {
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: "Images required" });
+      }
+
+      // Validate all files first
+      for (const file of req.files) {
+        if (!file.mimetype.startsWith("image/")) {
+          return res.status(400).json({ message: "Only images allowed" });
+        }
+      }
+
+      const uploadPromises = req.files.map(file => {
+        const timestamp = Date.now();
+        const safeName = file.originalname.replace(/\s+/g, "_");
+        const fileName = `${timestamp}_${safeName}`;
+
+        return put(
+          `users/${req.user.id}/${fileName}`,
+          file.buffer,
+          {
+            access: "public",
+            token: process.env.BLOB_READ_WRITE_TOKEN,
+            contentType: file.mimetype
+          }
+        );
+      });
+
+      // Upload in parallel (fast)
+      const blobs = await Promise.all(uploadPromises);
+
+      const imageUrls = blobs.map(blob => blob.url);
+
+      res.json({
+        message: "Images uploaded successfully",
+        total_uploaded: imageUrls.length,
+        images: imageUrls
+      });
+
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+app.get("/user-meals-images", verifyToken, async (req, res) => {
+  try {
+    const prefix = `users/${req.user.id}/`;
+
+    const { blobs } = await list({
+      prefix,
+      token: process.env.BLOB_READ_WRITE_TOKEN
+    });
+
+    const imageUrls = blobs.map(blob => blob.url);
+
+    res.json({
+      user_id: req.user.id,
+      total_images: imageUrls.length,
+      images: imageUrls
     });
 
   } catch (err) {
