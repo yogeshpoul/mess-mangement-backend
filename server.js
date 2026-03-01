@@ -113,64 +113,108 @@ app.get("/hello", async (req, res) => {
 /* ================= ADD MEAL ================= */
 app.post("/add-meal", verifyToken, async (req, res) => {
   try {
-    const { meal_id, meal_flag, meal_name, meal_price } = req.body;
+    const { meals } = req.body;
 
-    // 🔹 If meal_id provided → restore deleted meal
-    if (meal_id) {
-      const parsedId = parseInt(meal_id, 10);
+    if (!Array.isArray(meals) || meals.length === 0) {
+      return res.status(400).json({ message: "Meals array required" });
+    }
 
-      if (!Number.isInteger(parsedId)) {
-        return res.status(400).json({ message: "Invalid meal_id" });
+    // 🔹 1. Separate restore & insert
+    const restoreIds = [];
+    const insertMeals = [];
+
+    for (const meal of meals) {
+      if (meal.meal_id) {
+        const parsedId = parseInt(meal.meal_id, 10);
+        if (!Number.isInteger(parsedId)) {
+          return res.status(400).json({ message: "Invalid meal_id" });
+        }
+        restoreIds.push(parsedId);
+      } else {
+        insertMeals.push(meal);
       }
+    }
 
-      const result = await pool.query(
-        `UPDATE meals 
-         SET is_deleted = 0 
-         WHERE id = $1 AND user_id = $2
-         RETURNING *`,
-        [parsedId, req.user.id]
+    await pool.query("BEGIN");
+
+    let restoredCount = 0;
+    let insertedCount = 0;
+
+    // 🔥 2. Bulk Restore
+    if (restoreIds.length > 0) {
+      const restoreResult = await pool.query(
+        `UPDATE meals
+         SET is_deleted = 0
+         WHERE id = ANY($1)
+         AND user_id = $2
+         RETURNING id`,
+        [restoreIds, req.user.id]
       );
 
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: "Meal not found" });
-      }
-
-      return res.json({ message: "Meal restored successfully" });
+      restoredCount = restoreResult.rowCount;
     }
 
-    // 🔹 Otherwise → Normal Add Meal Logic
+    // 🔥 3. Bulk Insert
+    if (insertMeals.length > 0) {
 
-    if (meal_flag === undefined || !meal_name) {
-      return res.status(400).json({ message: "Meal flag and name required" });
+      const values = [];
+      const placeholders = [];
+
+      insertMeals.forEach((meal, index) => {
+        const { meal_flag, meal_name, meal_price } = meal;
+
+        if (meal_flag === undefined || !meal_name) {
+          throw new Error("Meal flag and name required");
+        }
+
+        if (![0, 1, 2].includes(meal_flag)) {
+          throw new Error("Invalid meal flag");
+        }
+
+        const parsedPrice =
+          meal_price !== undefined ? Number(meal_price) : null;
+
+        if (meal_price !== undefined && (isNaN(parsedPrice) || parsedPrice < 0)) {
+          throw new Error("Invalid meal_price");
+        }
+
+        const baseIndex = index * 4;
+
+        placeholders.push(
+          `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, 0)`
+        );
+
+        values.push(
+          req.user.id,
+          meal_flag,
+          meal_name,
+          parsedPrice
+        );
+      });
+
+      const insertQuery = `
+        INSERT INTO meals
+        (user_id, meal_flag, meal_name, meal_price, is_deleted)
+        VALUES ${placeholders.join(",")}
+      `;
+
+      await pool.query(insertQuery, values);
+
+      insertedCount = insertMeals.length;
     }
 
-    // Validate flag
-    if (![0, 1, 2].includes(meal_flag)) {
-      return res.status(400).json({ message: "Invalid meal flag" });
-    }
+    await pool.query("COMMIT");
 
-        // 🔹 Validate meal_price (optional)
-    let parsedPrice = null;
-
-    if (meal_price !== undefined) {
-      parsedPrice = Number(meal_price);
-
-      if (isNaN(parsedPrice) || parsedPrice < 0) {
-        return res.status(400).json({ message: "Invalid meal_price" });
-      }
-    }
-
-    await pool.query(
-      `INSERT INTO meals (user_id, meal_flag, meal_name, meal_price, is_deleted) 
-       VALUES ($1,$2,$3,$4,0)`,
-      [req.user.id, meal_flag, meal_name, parsedPrice]
-    );
-
-    res.status(201).json({ message: "Meal added successfully" });
+    res.json({
+      message: "Operation completed successfully",
+      restored: restoredCount,
+      inserted: insertedCount
+    });
 
   } catch (err) {
+    await pool.query("ROLLBACK");
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   }
 });
 
