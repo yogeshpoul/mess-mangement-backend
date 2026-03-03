@@ -6,12 +6,47 @@ const pool = require("./db");
 const cors = require("cors");
 const multer = require("multer");
 const { put, list, del } = require("@vercel/blob");
+const QRCode = require("qrcode");
+const nodemailer = require("nodemailer");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
 /* ================= REGISTER ================= */
+// app.post("/register", async (req, res) => {
+//   try {
+//     const { name, mobile, password } = req.body;
+
+//     if (!name || !mobile || !password) {
+//       return res.status(400).json({ message: "All fields required" });
+//     }
+
+//     // Check if mobile already exists
+//     const existingUser = await pool.query(
+//       "SELECT * FROM users WHERE mobile=$1",
+//       [mobile]
+//     );
+
+//     if (existingUser.rows.length > 0) {
+//       return res.status(400).json({ message: "Mobile already registered" });
+//     }
+
+//     // Hash password
+//     const hashedPassword = await bcrypt.hash(password, 10);
+    
+//     // Insert user
+//     await pool.query(
+//       "INSERT INTO users (name, mobile, password) VALUES ($1,$2,$3)",
+//       [name, mobile, hashedPassword]
+//     );
+
+//     res.status(201).json({ message: "User registered successfully" });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
 app.post("/register", async (req, res) => {
   try {
     const { name, mobile, password } = req.body;
@@ -20,9 +55,9 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    // Check if mobile already exists
+    // 🔹 Check existing mobile
     const existingUser = await pool.query(
-      "SELECT * FROM users WHERE mobile=$1",
+      "SELECT id FROM users WHERE mobile=$1",
       [mobile]
     );
 
@@ -30,20 +65,82 @@ app.post("/register", async (req, res) => {
       return res.status(400).json({ message: "Mobile already registered" });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Insert user
-    await pool.query(
-      "INSERT INTO users (name, mobile, password) VALUES ($1,$2,$3)",
+
+    // 🔥 Insert user & get ID
+    const result = await pool.query(
+      "INSERT INTO users (name, mobile, password) VALUES ($1,$2,$3) RETURNING id",
       [name, mobile, hashedPassword]
     );
 
-    res.status(201).json({ message: "User registered successfully" });
+    const userId = result.rows[0].id;
+
+    // 🔥 Generate dynamic URL
+    const dynamicUrl = `https://family-mess.vercel.app/?user_id=${userId}`;
+
+    // 🔥 Generate QR as buffer
+    const qrBuffer = await QRCode.toBuffer(dynamicUrl);
+
+    // 🔥 Upload QR to Vercel Blob
+    const blob = await put(
+      `users/${userId}/qr/qr_${Date.now()}.png`,
+      qrBuffer,
+      {
+        access: "public",
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+        contentType: "image/png"
+      }
+    );
+
+    const qrUrl = blob.url;
+
+    // 🔥 Send Email (clean HTML using blob URL)
+    await sendEmail(
+      process.env.TO_SEND_EMAIL,
+      "New User Registration QR Code",
+      `
+        <h3>New User Registered</h3>
+        <p>User ID: ${userId}</p>
+        <p>
+          URL: <a href="${dynamicUrl}">${dynamicUrl}</a>
+        </p>
+        <p>Scan QR below:</p>
+        <img src="${qrUrl}" width="200"/>
+      `
+    );
+
+    res.status(201).json({
+      message: "User registered successfully",
+      user_id: userId,
+      qr_url: qrUrl
+    });
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
+
+async function sendEmail(email, subject, message) {
+    const transporter = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port: process.env.MAIL_PORT,
+        auth: {
+            user: process.env.MAIL_USER,
+            pass: process.env.MAIL_PASSWORD,
+        },
+    })
+
+    const mailOptions = {
+        from: process.env.MAIL_USER,
+        to: email,
+        subject,
+        text: message,
+    }
+
+    transporter.sendMail(mailOptions)
+}
+
 
 /* ================= LOGIN ================= */
 app.post("/login", async (req, res) => {
