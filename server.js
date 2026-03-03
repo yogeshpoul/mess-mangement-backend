@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const pool = require("./db");
 const cors = require("cors");
 const multer = require("multer");
-const { put, list } = require("@vercel/blob");
+const { put, list, del } = require("@vercel/blob");
 
 const app = express();
 app.use(express.json());
@@ -630,6 +630,41 @@ app.get("/user-meals-images", verifyToken, async (req, res) => {
       user_id: req.user.id,
       total_images: imageUrls.length,
       images: imageUrls
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/delete-meal-images", verifyToken, async (req, res) => {
+  try {
+    const { image_names } = req.body;
+
+    if (!Array.isArray(image_names) || image_names.length === 0) {
+      return res.status(400).json({ message: "image_names array required" });
+    }
+
+    // 🔹 Build full blob paths (restricted to user folder)
+    const blobPaths = image_names.map(name => {
+      // basic filename sanitization
+      const safeName = name.replace(/[^a-zA-Z0-9._-]/g, "");
+      return `users/${req.user.id}/${safeName}`;
+    });
+
+    // 🔥 Delete in parallel
+    await Promise.all(
+      blobPaths.map(path =>
+        del(path, {
+          token: process.env.BLOB_READ_WRITE_TOKEN
+        })
+      )
+    );
+
+    res.json({
+      message: "Images deleted successfully",
+      deleted_count: blobPaths.length
     });
 
   } catch (err) {
