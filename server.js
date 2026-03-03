@@ -778,51 +778,69 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-app.post("/upload-meals-images", verifyToken, upload.array("images", 10), async (req, res) => {
-    try {
-      if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ message: "Images required" });
-      }
-
-      // Validate all files first
-      for (const file of req.files) {
-        if (!file.mimetype.startsWith("image/")) {
-          return res.status(400).json({ message: "Only images allowed" });
-        }
-      }
-
-      const uploadPromises = req.files.map(file => {
-        const timestamp = Date.now();
-        const safeName = file.originalname.replace(/\s+/g, "_");
-        const fileName = `${timestamp}_${safeName}`;
-
-        return put(
-          `users/${req.user.id}/${fileName}`,
-          file.buffer,
-          {
-            access: "public",
-            token: process.env.BLOB_READ_WRITE_TOKEN,
-            contentType: file.mimetype
-          }
-        );
-      });
-
-      // Upload in parallel (fast)
-      const blobs = await Promise.all(uploadPromises);
-
-      const imageUrls = blobs.map(blob => blob.url);
-
-      res.json({
-        message: "Images uploaded successfully",
-        total_uploaded: imageUrls.length,
-        images: imageUrls
-      });
-
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
+app.post("/upload-meals-images", verifyToken, upload.array("images", 3), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "Images required" });
     }
+
+    // 🔹 Validate mimetype
+    for (const file of req.files) {
+      if (!file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ message: "Only images allowed" });
+      }
+    }
+
+    const userId = req.user.id;
+    const userPath = `users/${userId}/`;
+
+    // 🔹 1. Check existing images count
+    const { blobs } = await list({
+      prefix: userPath,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+
+    const existingImagesCount = blobs.length;
+    const newImagesCount = req.files.length;
+
+    if (existingImagesCount + newImagesCount > 3) {
+      return res.status(400).json({
+        message: `Upload limit exceeded. You already have ${existingImagesCount} image(s). Max allowed is 3.`,
+      });
+    }
+
+    // 🔹 2. Upload in parallel
+    const uploadPromises = req.files.map((file) => {
+      const timestamp = Date.now();
+      const safeName = file.originalname.replace(/\s+/g, "_");
+      const fileName = `${timestamp}_${safeName}`;
+
+      return put(
+        `${userPath}${fileName}`,
+        file.buffer,
+        {
+          access: "public",
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+          contentType: file.mimetype,
+        }
+      );
+    });
+
+    const blobsUploaded = await Promise.all(uploadPromises);
+    const imageUrls = blobsUploaded.map((blob) => blob.url);
+
+    res.json({
+      message: "Images uploaded successfully",
+      total_uploaded: imageUrls.length,
+      total_existing: existingImagesCount + imageUrls.length,
+      images: imageUrls,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
+}
 );
 
 app.get("/user-meals-images", verifyToken, async (req, res) => {
