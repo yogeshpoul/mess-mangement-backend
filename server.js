@@ -210,112 +210,112 @@ app.get("/hello", async (req, res) => {
 });
 
 /* ================= ADD MEAL ================= */
-app.post("/add-meal", verifyToken, async (req, res) => {
-  try {
-    const { meals } = req.body;
+// app.post("/add-meal", verifyToken, async (req, res) => {
+//   try {
+//     const { meals } = req.body;
 
-    if (!Array.isArray(meals) || meals.length === 0) {
-      return res.status(400).json({ message: "Meals array required" });
-    }
+//     if (!Array.isArray(meals) || meals.length === 0) {
+//       return res.status(400).json({ message: "Meals array required" });
+//     }
 
-    // 🔹 1. Separate restore & insert
-    const restoreIds = [];
-    const insertMeals = [];
+//     // 🔹 1. Separate restore & insert
+//     const restoreIds = [];
+//     const insertMeals = [];
 
-    for (const meal of meals) {
-      if (meal.meal_id) {
-        const parsedId = parseInt(meal.meal_id, 10);
-        if (!Number.isInteger(parsedId)) {
-          return res.status(400).json({ message: "Invalid meal_id" });
-        }
-        restoreIds.push(parsedId);
-      } else {
-        insertMeals.push(meal);
-      }
-    }
+//     for (const meal of meals) {
+//       if (meal.meal_id) {
+//         const parsedId = parseInt(meal.meal_id, 10);
+//         if (!Number.isInteger(parsedId)) {
+//           return res.status(400).json({ message: "Invalid meal_id" });
+//         }
+//         restoreIds.push(parsedId);
+//       } else {
+//         insertMeals.push(meal);
+//       }
+//     }
 
-    await pool.query("BEGIN");
+//     await pool.query("BEGIN");
 
-    let restoredCount = 0;
-    let insertedCount = 0;
+//     let restoredCount = 0;
+//     let insertedCount = 0;
 
-    // 🔥 2. Bulk Restore
-    if (restoreIds.length > 0) {
-      const restoreResult = await pool.query(
-        `UPDATE meals
-         SET is_deleted = 0
-         WHERE id = ANY($1)
-         AND user_id = $2
-         RETURNING id`,
-        [restoreIds, req.user.id]
-      );
+//     // 🔥 2. Bulk Restore
+//     if (restoreIds.length > 0) {
+//       const restoreResult = await pool.query(
+//         `UPDATE meals
+//          SET is_deleted = 0
+//          WHERE id = ANY($1)
+//          AND user_id = $2
+//          RETURNING id`,
+//         [restoreIds, req.user.id]
+//       );
 
-      restoredCount = restoreResult.rowCount;
-    }
+//       restoredCount = restoreResult.rowCount;
+//     }
 
-    // 🔥 3. Bulk Insert
-    if (insertMeals.length > 0) {
+//     // 🔥 3. Bulk Insert
+//     if (insertMeals.length > 0) {
 
-      const values = [];
-      const placeholders = [];
+//       const values = [];
+//       const placeholders = [];
 
-      insertMeals.forEach((meal, index) => {
-        const { meal_flag, meal_name, meal_price } = meal;
+//       insertMeals.forEach((meal, index) => {
+//         const { meal_flag, meal_name, meal_price } = meal;
 
-        if (meal_flag === undefined || !meal_name) {
-          throw new Error("Meal flag and name required");
-        }
+//         if (meal_flag === undefined || !meal_name) {
+//           throw new Error("Meal flag and name required");
+//         }
 
-        if (![0, 1, 2].includes(meal_flag)) {
-          throw new Error("Invalid meal flag");
-        }
+//         if (![0, 1, 2].includes(meal_flag)) {
+//           throw new Error("Invalid meal flag");
+//         }
 
-        const parsedPrice =
-          meal_price !== undefined ? Number(meal_price) : null;
+//         const parsedPrice =
+//           meal_price !== undefined ? Number(meal_price) : null;
 
-        if (meal_price !== undefined && (isNaN(parsedPrice) || parsedPrice < 0)) {
-          throw new Error("Invalid meal_price");
-        }
+//         if (meal_price !== undefined && (isNaN(parsedPrice) || parsedPrice < 0)) {
+//           throw new Error("Invalid meal_price");
+//         }
 
-        const baseIndex = index * 4;
+//         const baseIndex = index * 4;
 
-        placeholders.push(
-          `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, 0)`
-        );
+//         placeholders.push(
+//           `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, 0)`
+//         );
 
-        values.push(
-          req.user.id,
-          meal_flag,
-          meal_name,
-          parsedPrice
-        );
-      });
+//         values.push(
+//           req.user.id,
+//           meal_flag,
+//           meal_name,
+//           parsedPrice
+//         );
+//       });
 
-      const insertQuery = `
-        INSERT INTO meals
-        (user_id, meal_flag, meal_name, meal_price, is_deleted)
-        VALUES ${placeholders.join(",")}
-      `;
+//       const insertQuery = `
+//         INSERT INTO meals
+//         (user_id, meal_flag, meal_name, meal_price, is_deleted)
+//         VALUES ${placeholders.join(",")}
+//       `;
 
-      await pool.query(insertQuery, values);
+//       await pool.query(insertQuery, values);
 
-      insertedCount = insertMeals.length;
-    }
+//       insertedCount = insertMeals.length;
+//     }
 
-    await pool.query("COMMIT");
+//     await pool.query("COMMIT");
 
-    res.json({
-      message: "Operation completed successfully",
-      restored: restoredCount,
-      inserted: insertedCount
-    });
+//     res.json({
+//       message: "Operation completed successfully",
+//       restored: restoredCount,
+//       inserted: insertedCount
+//     });
 
-  } catch (err) {
-    await pool.query("ROLLBACK");
-    console.error(err);
-    res.status(400).json({ error: err.message });
-  }
-});
+//   } catch (err) {
+//     await pool.query("ROLLBACK");
+//     console.error(err);
+//     res.status(400).json({ error: err.message });
+//   }
+// });
 
 // app.post("/add-meal", verifyToken, async (req, res) => {
 //   try {
@@ -343,11 +343,124 @@ app.post("/add-meal", verifyToken, async (req, res) => {
 //   }
 // });
 
+app.post("/add-meal", verifyToken, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const { meals } = req.body;
+
+    if (!Array.isArray(meals) || meals.length === 0) {
+      return res.status(400).json({ message: "Meals array required" });
+    }
+
+    const restoreIds = [];
+    const insertMeals = [];
+
+    for (const meal of meals) {
+      if (meal.meal_id) {
+        const parsedId = parseInt(meal.meal_id, 10);
+        if (!Number.isInteger(parsedId)) {
+          return res.status(400).json({ message: "Invalid meal_id" });
+        }
+        restoreIds.push(parsedId);
+      } else {
+        insertMeals.push(meal);
+      }
+    }
+
+    await client.query("BEGIN");
+
+    let restoredCount = 0;
+    let insertedCount = 0;
+
+    // 🔹 Bulk Restore
+    if (restoreIds.length > 0) {
+      const restoreResult = await client.query(
+        `UPDATE meals
+         SET is_deleted = 0
+         WHERE id = ANY($1)
+         AND user_id = $2
+         RETURNING id`,
+        [restoreIds, req.user.id]
+      );
+
+      restoredCount = restoreResult.rowCount;
+    }
+
+    // 🔹 Bulk Insert (NOW WITH TITLE)
+    if (insertMeals.length > 0) {
+      const values = [];
+      const placeholders = [];
+
+      insertMeals.forEach((meal, index) => {
+        const { meal_flag, meal_name, meal_price, title } = meal;
+
+        if (meal_flag === undefined || !meal_name) {
+          throw new Error("Meal flag and name required");
+        }
+
+        if (![0, 1, 2].includes(meal_flag)) {
+          throw new Error("Invalid meal flag");
+        }
+
+        const parsedPrice =
+          meal_price !== undefined ? Number(meal_price) : null;
+
+        if (meal_price !== undefined && (isNaN(parsedPrice) || parsedPrice < 0)) {
+          throw new Error("Invalid meal_price");
+        }
+
+        const parsedTitle =
+          title !== undefined ? String(title).trim() : null;
+
+        const baseIndex = index * 5;
+
+        placeholders.push(
+          `($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, 0)`
+        );
+
+        values.push(
+          req.user.id,
+          meal_flag,
+          meal_name,
+          parsedPrice,
+          parsedTitle
+        );
+      });
+
+      const insertQuery = `
+        INSERT INTO meals
+        (user_id, meal_flag, meal_name, meal_price, title, is_deleted)
+        VALUES ${placeholders.join(",")}
+      `;
+
+      await client.query(insertQuery, values);
+
+      insertedCount = insertMeals.length;
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      message: "Operation completed successfully",
+      restored: restoredCount,
+      inserted: insertedCount
+    });
+
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(err);
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 /* ================= GET USER MEALS ================= */
 app.get("/meals", verifyToken, async (req, res) => {
   try {
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name FROM meals WHERE user_id=$1 ORDER BY id desc",
+      "SELECT id, meal_flag, meal_name, title FROM meals WHERE user_id=$1 ORDER BY id desc",
       [req.user.id]
     );
 
@@ -361,7 +474,7 @@ app.get("/meals", verifyToken, async (req, res) => {
 app.get("/current-meals", verifyToken, async (req, res) => {
   try {
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
+      "SELECT id, meal_flag, meal_name, meal_price, title FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY meal_flag",
       [req.user.id]
     );
 
@@ -468,7 +581,7 @@ app.get("/meals-customers", async (req, res) => {
     //   [user_id || null, name || null]
     // );
     const meals = await pool.query(
-      "SELECT id, meal_flag, meal_name, meal_price FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY id desc",
+      "SELECT id, meal_flag, meal_name, meal_price, title FROM meals WHERE user_id=$1 AND is_deleted=0 ORDER BY id desc",
       [user_id]
     );
 
