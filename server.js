@@ -775,7 +775,7 @@ app.get("/dashboard/my-visits", verifyToken, async (req, res) => {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: { fileSize: 3 * 1024 * 1024 } // 5MB
 });
 
 app.post("/upload-meals-images", verifyToken, upload.array("images", 3), async (req, res) => {
