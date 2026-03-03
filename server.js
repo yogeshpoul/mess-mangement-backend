@@ -610,6 +610,50 @@ app.get("/meals-customers", async (req, res) => {
   }
 });
 
+app.post("/rate-meal", async (req, res) => {
+  try {
+    const { user_id, meal_id, rating } = req.body;
+
+    if (!user_id || !meal_id || rating === undefined) {
+      return res.status(400).json({ message: "All fields required" });
+    }
+
+    if (![1,2,3,4,5].includes(Number(rating))) {
+      return res.status(400).json({ message: "Rating must be between 1-5" });
+    }
+
+    // 🔹 Capture visitor IP (same way as visit API)
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+
+    const updateResult = await pool.query(
+      `
+      UPDATE api_visits
+      SET meal_id = $1,
+          rating = $2
+      WHERE id = (
+          SELECT id FROM api_visits
+          WHERE user_id = $3
+          AND ip_address = $4
+          ORDER BY id DESC
+          LIMIT 1
+      )
+      RETURNING id
+      `,
+      [meal_id, rating, user_id, ip]
+    );
+
+    if (updateResult.rowCount === 0) {
+      return res.status(404).json({ message: "No visit found for this visitor" });
+    }
+
+    res.json({ message: "Rating submitted successfully" });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/user-status", verifyToken, async (req, res) => {
   try {
     const { status_flag } = req.query;
