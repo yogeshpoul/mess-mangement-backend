@@ -531,6 +531,62 @@ app.delete("/meals/:id", verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.delete("/meals-by-flag/:meal_flag", verifyToken, async (req, res) => {
+  try {
+    const mealFlag = parseInt(req.params.meal_flag, 10);
+    const softDelete = parseInt(req.query.soft_delete, 10);
+
+    if (![0, 1, 2].includes(mealFlag)) {
+      return res.status(400).json({ message: "Invalid meal_flag" });
+    }
+
+    let result;
+
+    // 🔹 If soft_delete=1 → Soft Delete
+    if (softDelete === 1) {
+      result = await pool.query(
+        `UPDATE meals
+         SET is_deleted = 1
+         WHERE meal_flag = $1 
+         AND user_id = $2 
+         AND is_deleted = 0
+         RETURNING *`,
+        [mealFlag, req.user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: "No active meals found for this flag" });
+      }
+
+      return res.json({
+        message: "Meals soft deleted successfully",
+        affected_rows: result.rowCount
+      });
+    }
+
+    // 🔹 Otherwise → Permanent Delete
+    result = await pool.query(
+      `DELETE FROM meals
+       WHERE meal_flag = $1 
+       AND user_id = $2
+       RETURNING *`,
+      [mealFlag, req.user.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "No meals found for this flag" });
+    }
+
+    res.json({
+      message: "Meals permanently deleted",
+      affected_rows: result.rowCount
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // app.delete("/meals/:id", verifyToken, async (req, res) => {
 //   try {
 //     const mealId = parseInt(req.params.id, 10);
