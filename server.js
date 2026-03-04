@@ -99,14 +99,90 @@ app.post("/register", async (req, res) => {
       process.env.TO_SEND_EMAIL,
       "New User Registration QR Code",
       `
-        <h3>New User Registered</h3>
-        <p>User ID: ${userId}</p>
-        <p>
-          URL: <a href="${dynamicUrl}">${dynamicUrl}</a>
-        </p>
-        <p>Scan QR below:</p>
-        <img src="${qrUrl}" width="200"/>
-      `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>User QR</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        text-align: center;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+      }
+
+      .info {
+        margin: 15px 0;
+        font-size: 16px;
+      }
+
+      .qr-box {
+        margin-top: 25px;
+      }
+
+      .qr-box img {
+        width: 200px;
+        height: 200px;
+      }
+
+      .footer {
+        margin-top: 30px;
+        font-size: 12px;
+        color: #888;
+      }
+
+      @media print {
+        body {
+          background: white;
+        }
+        .container {
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <h2>User Registration Details</h2>
+
+      <div class="info">
+        <strong>User ID:</strong> ${userId}
+      </div>
+
+      <div class="info">
+        <strong>Access URL:</strong><br/>
+        <a href="${dynamicUrl}">${dynamicUrl}</a>
+      </div>
+
+      <div class="qr-box">
+        <p><strong>Scan QR Code</strong></p>
+        <img src="${qrUrl}" alt="QR Code"/>
+      </div>
+
+      <div class="footer">
+        Please keep this QR code safe.  
+        You can print this email for future use.
+      </div>
+    </div>
+  </body>
+  </html>
+  `
     );
 
     res.status(201).json({
@@ -135,7 +211,7 @@ async function sendEmail(email, subject, message) {
         from: process.env.MAIL_USER,
         to: email,
         subject,
-        text: message,
+        html: message,
     }
 
     transporter.sendMail(mailOptions)
