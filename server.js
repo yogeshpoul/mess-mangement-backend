@@ -420,7 +420,7 @@ app.delete("/meals/:id", verifyToken, async (req, res) => {
     if (softDelete === 1) {
       result = await pool.query(
         `DELETE FROM meals
-          WHERE meal_list_id = $1 AND user_id = $2 
+          WHERE id = $1 AND user_id = $2 
           RETURNING *`,
         [mealId, req.user.id]
       );
