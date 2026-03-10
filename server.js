@@ -76,7 +76,7 @@ app.post("/register", async (req, res) => {
     const userId = result.rows[0].id;
 
     // 🔥 Generate dynamic URL
-    const dynamicUrl = `https://family-mess.vercel.app/?user_id=${userId}`;
+    const dynamicUrl = `https://mydailymenu.vercel.app/?user_id=${userId}`;
 
     // 🔥 Generate QR as buffer
     const qrBuffer = await QRCode.toBuffer(dynamicUrl);
