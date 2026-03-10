@@ -398,7 +398,27 @@ app.get("/current-meals", verifyToken, async (req, res) => {
       [req.user.id]
     );
 
-    res.json(meals.rows);
+    const locationResult = await pool.query(
+      `SELECT latitude, longitude
+       FROM users
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    const { latitude, longitude } = locationResult.rows[0] || {};
+
+    const mapUrl = latitude && longitude
+      ? `https://www.google.com/maps?q=${latitude},${longitude}`
+      : null;
+
+    res.json({
+      meals: meals.rows, 
+      location: {
+        latitude,
+        longitude,
+        map_url: mapUrl
+      }
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -680,6 +700,36 @@ app.get("/user-status", verifyToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/update-location", verifyToken, async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ message: "Latitude and longitude required" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET latitude = $1,
+          longitude = $2
+      WHERE id = $3
+      RETURNING id, latitude, longitude
+      `,
+      [latitude, longitude, req.user.id]
+    );
+
+    res.json({
+      message: "Location updated successfully",
+      location: result.rows[0]
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
