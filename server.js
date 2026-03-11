@@ -609,7 +609,26 @@ app.get("/meals-customers", async (req, res) => {
 
     const imageUrls = blobs.map(blob => blob.url);
 
-    res.json({ user_name, meals: meals.rows, image_urls: imageUrls });
+    const locationResult = await pool.query(
+      `SELECT latitude, longitude
+       FROM users
+       WHERE id = $1`,
+      [user_id]
+    );
+
+    const { latitude, longitude } = locationResult.rows[0] || {};
+
+    const mapUrl = latitude && longitude
+      ? `https://www.google.com/maps?q=${latitude},${longitude}`
+      : null;
+
+    res.json({ user_name, meals: meals.rows, image_urls: imageUrls, 
+      location: {
+        latitude,
+        longitude,
+        map_url: mapUrl
+      }
+    });
 
   } catch (err) {
     console.error(err);
