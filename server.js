@@ -607,7 +607,9 @@ app.get("/meals-customers", async (req, res) => {
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
 
-    const imageUrls = blobs.map(blob => blob.url);
+    const imageUrls = blobs
+      .filter(blob => !blob.pathname.includes('/qr/'))
+      .map(blob => blob.url);
 
     const locationResult = await pool.query(
       `SELECT latitude, longitude
