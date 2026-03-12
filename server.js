@@ -954,7 +954,9 @@ app.get("/user-meals-images", verifyToken, async (req, res) => {
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
 
-    const imageUrls = blobs.map(blob => blob.url);
+    const imageUrls = blobs
+      .filter(blob => !blob.pathname.includes('/qr/'))
+      .map(blob => blob.url);
 
     res.json({
       user_id: req.user.id,
