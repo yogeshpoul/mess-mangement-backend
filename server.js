@@ -75,15 +75,16 @@ app.post("/register", async (req, res) => {
 
     const userId = result.rows[0].id;
 
-    // 🔥 Generate dynamic URL
+    // Generate dynamic URL
     const dynamicUrl = `https://mydailymenu.vercel.app/?user_id=${userId}`;
 
-    // 🔥 Generate QR as buffer
+    // Generate QR as buffer
     const qrBuffer = await QRCode.toBuffer(dynamicUrl);
 
-    // 🔥 Upload QR to Vercel Blob
+    const prefix = process.env.NODE_ENV === "development" ? "dev/" : "";
+    // Upload QR to Vercel Blob
     const blob = await put(
-      `users/${userId}/qr/qr_${Date.now()}.png`,
+      `users/${prefix}qr/${userId}/qr_${Date.now()}.png`,
       qrBuffer,
       {
         access: "public",
@@ -568,15 +569,6 @@ app.get("/meals-customers", async (req, res) => {
       ["/meals-customers", ip, user_id || null]
     );
 
-    // const meals = await pool.query(
-    //   `SELECT m.id, m.meal_flag, m.meal_name, u.name
-    //    FROM meals m
-    //    JOIN users u ON m.user_id = u.id
-    //    WHERE ($1::int IS NULL OR u.id = $1)
-    //    AND ($2::text IS NULL OR u.name = $2)
-    //    ORDER BY m.meal_flag`,
-    //   [user_id || null, name || null]
-    // );
     const meals = await pool.query(
       `SELECT
         m.id,
@@ -600,10 +592,11 @@ app.get("/meals-customers", async (req, res) => {
 
     const user_name = userResult.rows[0].name;
 
-    const prefix = `users/${user_id}/`;
+    const prefix = process.env.NODE_ENV === "development" ? "dev/" : "";
+    const userPath = `users/${prefix}${user_id}/`;
 
     const { blobs } = await list({
-      prefix,
+      prefix: userPath,
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
 
@@ -612,25 +605,34 @@ app.get("/meals-customers", async (req, res) => {
       .map(blob => blob.url);
 
     const locationResult = await pool.query(
-      `SELECT latitude, longitude
+      `SELECT latitude, longitude, status_flag
        FROM users
        WHERE id = $1`,
       [user_id]
     );
 
-    const { latitude, longitude } = locationResult.rows[0] || {};
+    const { latitude, longitude, status_flag } = locationResult.rows[0] || {};
 
     const mapUrl = latitude && longitude
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
       : null;
 
-    res.json({ user_name, meals: meals.rows, image_urls: imageUrls, 
+    const response = {
+      user_name,
+      image_urls: imageUrls,
       location: {
         latitude,
         longitude,
         map_url: mapUrl
-      }
-    });
+      },
+      meals_flag
+    };
+
+    if (status_flag) {
+      response.meals = meals.rows;
+    }
+
+    res.json(response);
 
   } catch (err) {
     console.error(err);
@@ -894,7 +896,8 @@ app.post("/upload-meals-images", verifyToken, upload.array("images", 3), async (
     }
 
     const userId = req.user.id;
-    const userPath = `users/${userId}/`;
+    const prefix = process.env.NODE_ENV === "development" ? "dev/" : "";
+    const userPath = `users/${prefix}${userId}/`;
 
     // 🔹 1. Check existing images count
     const { blobs } = await list({
@@ -947,10 +950,11 @@ app.post("/upload-meals-images", verifyToken, upload.array("images", 3), async (
 
 app.get("/user-meals-images", verifyToken, async (req, res) => {
   try {
-    const prefix = `users/${req.user.id}/`;
+    const prefix = process.env.NODE_ENV === "development" ? "dev/" : "";
+    const userPath = `users/${prefix}${req.user.id}/`;
 
     const { blobs } = await list({
-      prefix,
+      prefix: userPath,
       token: process.env.BLOB_READ_WRITE_TOKEN
     });
 
