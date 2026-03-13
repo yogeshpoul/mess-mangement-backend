@@ -625,7 +625,7 @@ app.get("/meals-customers", async (req, res) => {
         longitude,
         map_url: mapUrl
       },
-      meals_flag
+      status_flag
     };
 
     if (status_flag) {
