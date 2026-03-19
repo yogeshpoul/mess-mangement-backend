@@ -400,13 +400,13 @@ app.get("/current-meals", verifyToken, async (req, res) => {
     );
 
     const locationResult = await pool.query(
-      `SELECT latitude, longitude
+      `SELECT latitude, longitude, upi_id
        FROM users
        WHERE id = $1`,
       [req.user.id]
     );
 
-    const { latitude, longitude } = locationResult.rows[0] || {};
+    const { latitude, longitude, upi_id } = locationResult.rows[0] || {};
 
     const mapUrl = latitude && longitude
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
@@ -418,7 +418,8 @@ app.get("/current-meals", verifyToken, async (req, res) => {
         latitude,
         longitude,
         map_url: mapUrl
-      }
+      },
+      upi_id,
     });
 
   } catch (err) {
@@ -605,13 +606,13 @@ app.get("/meals-customers", async (req, res) => {
       .map(blob => blob.url);
 
     const locationResult = await pool.query(
-      `SELECT latitude, longitude, status_flag
+      `SELECT latitude, longitude, status_flag, upi_id
        FROM users
        WHERE id = $1`,
       [user_id]
     );
 
-    const { latitude, longitude, status_flag } = locationResult.rows[0] || {};
+    const { latitude, longitude, status_flag, upi_id } = locationResult.rows[0] || {};
 
     const mapUrl = latitude && longitude
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
@@ -625,7 +626,8 @@ app.get("/meals-customers", async (req, res) => {
         longitude,
         map_url: mapUrl
       },
-      status_flag
+      status_flag,
+      upi_id,
     };
 
     if (status_flag) {
@@ -748,6 +750,41 @@ app.put("/update-location", verifyToken, async (req, res) => {
     res.json({
       message: "Location updated successfully",
       location: result.rows[0]
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/update-upi", verifyToken, async (req, res) => {
+  try {
+    const { upi_id } = req.body;
+
+    if (!upi_id) {
+      return res.status(400).json({ message: "UPI ID is required" });
+    }
+
+    const upiRegex = /^[\w.-]+@[\w]+$/;
+
+    if (!upiRegex.test(upi_id)) {
+      return res.status(400).json({ message: "Invalid UPI ID format" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET upi_id = $1
+      WHERE id = $2
+      RETURNING id, upi_id
+      `,
+      [upi_id, req.user.id]
+    );
+
+    res.json({
+      message: "UPI updated successfully",
+      upi: result.rows[0]
     });
 
   } catch (err) {
