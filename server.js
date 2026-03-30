@@ -400,13 +400,13 @@ app.get("/current-meals", verifyToken, async (req, res) => {
     );
 
     const locationResult = await pool.query(
-      `SELECT latitude, longitude, upi_id
+      `SELECT latitude, longitude, upi_id, link
        FROM users
        WHERE id = $1`,
       [req.user.id]
     );
 
-    const { latitude, longitude, upi_id } = locationResult.rows[0] || {};
+    const { latitude, longitude, upi_id, link } = locationResult.rows[0] || {};
 
     const mapUrl = latitude && longitude
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
@@ -420,6 +420,7 @@ app.get("/current-meals", verifyToken, async (req, res) => {
         map_url: mapUrl
       },
       upi_id,
+      link,
     });
 
   } catch (err) {
@@ -606,13 +607,13 @@ app.get("/meals-customers", async (req, res) => {
       .map(blob => blob.url);
 
     const locationResult = await pool.query(
-      `SELECT latitude, longitude, status_flag, upi_id
+      `SELECT latitude, longitude, status_flag, upi_id, link
        FROM users
        WHERE id = $1`,
       [user_id]
     );
 
-    const { latitude, longitude, status_flag, upi_id } = locationResult.rows[0] || {};
+    const { latitude, longitude, status_flag, upi_id, link } = locationResult.rows[0] || {};
 
     const mapUrl = latitude && longitude
       ? `https://www.google.com/maps?q=${latitude},${longitude}`
@@ -628,6 +629,7 @@ app.get("/meals-customers", async (req, res) => {
       },
       status_flag,
       upi_id,
+      link,
     };
 
     if (status_flag) {
@@ -785,6 +787,35 @@ app.put("/update-upi", verifyToken, async (req, res) => {
     res.json({
       message: "UPI updated successfully",
       upi: result.rows[0]
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/update-link", verifyToken, async (req, res) => {
+  try {
+    const { link } = req.body;
+
+    if (!link) {
+      return res.status(400).json({ message: "Link is required" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users
+      SET link = $1
+      WHERE id = $2
+      RETURNING id, link
+      `,
+      [link, req.user.id]
+    );
+
+    res.json({
+      message: "Link updated successfully",
+      link: result.rows[0]
     });
 
   } catch (err) {
